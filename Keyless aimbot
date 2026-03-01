@@ -1,0 +1,310 @@
+-- ULTIMATE ESP + AIMBOT - GUI ONLY VERSION (No keybinds) - FIXED BOX + HIGHLIGHT
+-- Box and Highlight now work independently (can be both on at once)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-- SETTINGS (nothing enabled by default)
+-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+local Settings = {
+    AimPart = "Head",
+    AimbotEnabled = false,
+    AimbotActive = false,
+    TargetTeam = false,
+    UseBoxESP = false, -- separate toggle for Box
+    UseHighlightESP = false, -- separate toggle for Highlight
+    ShowNames = false,
+    ShowTeamESP = false,
+}
+local ESP = {}
+-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-- ESP CREATION & UPDATE
+-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+local function CreateESP(plr)
+    if plr == LocalPlayer or ESP[plr] then return end
+    -- Cleanup old ESP
+    if ESP[plr] then
+        if ESP[plr].Conn then ESP[plr].Conn:Disconnect() end
+        for _, v in pairs(ESP[plr].Draw or {}) do pcall(function() v:Remove() end) end
+        if ESP[plr].HL and ESP[plr].HL.Parent then pcall(function() ESP[plr].HL:Destroy() end) end
+    end
+    local d = {
+        Box = Drawing.new("Square"),
+        Name = Drawing.new("Text"),
+        Dist = Drawing.new("Text"),
+        Tool = Drawing.new("Text"),
+        HBarBG = Drawing.new("Square"),
+        HBar = Drawing.new("Square"),
+        HText = Drawing.new("Text")
+    }
+    d.Box.Thickness = 2; d.Box.Filled = false; d.Box.Transparency = 1
+    d.Name.Size = 16; d.Name.Center = true; d.Name.Outline = true; d.Name.Color = Color3.new(1,1,1)
+    d.Dist.Size = 14; d.Dist.Center = true; d.Dist.Outline = true; d.Dist.Color = Color3.new(1,1,1)
+    d.Tool.Size = 14; d.Tool.Center = true; d.Tool.Outline = true; d.Tool.Color = Color3.new(1,1,1)
+    d.HBarBG.Filled = true; d.HBarBG.Color = Color3.new(0,0,0); d.HBarBG.Transparency = 0.5
+    d.HBar.Filled = true
+    d.HText.Size = 14; d.HText.Center = true; d.HText.Outline = true; d.HText.Color = Color3.new(1,1,1)
+    local hl = Instance.new("Highlight")
+    hl.Name = "ESP_Highlight_" .. plr.Name
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.FillTransparency = 0.6
+    hl.OutlineTransparency = 0
+    hl.Parent = CoreGui
+    ESP[plr] = { Draw = d, HL = hl, Conn = nil }
+    ESP[plr].Conn = RunService.RenderStepped:Connect(function()
+        local char = plr.Character
+        if not char then
+            for _, v in pairs(d) do v.Visible = false end
+            hl.Enabled = false
+            return
+        end
+        local hum = char:FindFirstChild("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+        local head = char:FindFirstChild("Head")
+        if not (hum and root and head and hum.Health > 0) then
+            for _, v in pairs(d) do v.Visible = false end
+            hl.Enabled = false
+            return
+        end
+        local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        local pos, onScreen = Camera:WorldToViewportPoint(root.Position)
+        local isTeam = plr.Team == LocalPlayer.Team and LocalPlayer.Team ~= nil
+        if not onScreen or (not Settings.ShowTeamESP and isTeam) then
+            for _, v in pairs(d) do v.Visible = false end
+            hl.Enabled = false
+            return
+        end
+        local color = isTeam and Color3.fromRGB(0, 255, 255) or Color3.fromRGB(255, 0, 0)
+        local hp = hum.Health / hum.MaxHealth
+        local healthColor = Color3.fromRGB(255 * (1 - hp), 255 * hp, 0)
+        local toolName = char:FindFirstChildWhichIsA("Tool") and char:FindFirstChildWhichIsA("Tool").Name or "None"
+        local dist = myRoot and math.floor((root.Position - myRoot.Position).Magnitude).."m" or ""
+        -- Highlight (always try to update if enabled in settings)
+        hl.Adornee = char
+        hl.FillColor = color
+        hl.OutlineColor = color
+        hl.Enabled = Settings.UseHighlightESP
+        -- 2D Box & Info
+        local headPos = head and Camera:WorldToViewportPoint(head.Position + Vector3.new(0,1,0)) or pos
+        local top = Camera:WorldToViewportPoint(root.Position + Vector3.new(0,3,0))
+        local bot = Camera:WorldToViewportPoint(root.Position - Vector3.new(0,4,0))
+        local height = math.abs(top.Y - bot.Y)
+        local width = height * 0.55
+        d.Box.Size = Vector2.new(width, height)
+        d.Box.Position = Vector2.new(pos.X - width/2, pos.Y - height/2)
+        d.Box.Color = color
+        d.Box.Visible = Settings.UseBoxESP
+        d.Name.Position = Vector2.new(headPos.X, headPos.Y - 50)
+        d.Name.Text = plr.DisplayName .. (isTeam and " [TEAM]" or "")
+        d.Name.Visible = Settings.ShowNames
+        d.Dist.Position = Vector2.new(headPos.X, headPos.Y - 30)
+        d.Dist.Text = dist
+        d.Dist.Visible = Settings.ShowNames
+        d.Tool.Position = Vector2.new(headPos.X, headPos.Y - 10)
+        d.Tool.Text = toolName
+        d.Tool.Visible = Settings.ShowNames
+        local bx = pos.X - width/2 - 34
+        local by = pos.Y - height/2
+        d.HBarBG.Position = Vector2.new(bx-3, by-2)
+        d.HBarBG.Size = Vector2.new(8, height+4)
+        d.HBarBG.Visible = Settings.ShowNames
+        d.HBar.Position = Vector2.new(bx, by + height - height*hp)
+        d.HBar.Size = Vector2.new(6, height*hp)
+        d.HBar.Color = healthColor
+        d.HBar.Visible = Settings.ShowNames
+        d.HText.Position = Vector2.new(bx-40, by + height/2 - 10)
+        d.HText.Text = math.floor(hum.Health).." HP"
+        d.HText.Visible = Settings.ShowNames
+    end)
+end
+local function SetupPlayer(p)
+    if p == LocalPlayer then return end
+    p.CharacterAdded:Connect(function() task.wait(0.8) CreateESP(p) end)
+    if p.Character then task.delay(0.8, CreateESP, p) end
+end
+for _, p in Players:GetPlayers() do SetupPlayer(p) end
+Players.PlayerAdded:Connect(SetupPlayer)
+Players.PlayerRemoving:Connect(function(p)
+    if ESP[p] then
+        if ESP[p].Conn then ESP[p].Conn:Disconnect() end
+        for _, v in pairs(ESP[p].Draw or {}) do pcall(function() v:Remove() end) end
+        if ESP[p].HL and ESP[p].HL.Parent then pcall(function() ESP[p].HL:Destroy() end) end
+        ESP[p] = nil
+    end
+end)
+-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-- SIMPLE AIMBOT (RMB hold)
+-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+local function GetClosestTarget()
+    local best, closest = nil, 9999
+    local mouse = UserInputService:GetMouseLocation()
+    for _, p in Players:GetPlayers() do
+        if p == LocalPlayer then continue end
+        local char = p.Character
+        if not (char and char:FindFirstChild(Settings.AimPart)) then continue end
+        local hum = char:FindFirstChild("Humanoid")
+        if not (hum and hum.Health > 0) then continue end
+        local teammate = p.Team == LocalPlayer.Team and LocalPlayer.Team ~= nil
+        if not Settings.TargetTeam and teammate then continue end
+        local pos, onScreen = Camera:WorldToViewportPoint(char[Settings.AimPart].Position)
+        if not onScreen then continue end
+        local dist = (Vector2.new(pos.X, pos.Y) - mouse).Magnitude
+        if dist < closest then
+            closest = dist
+            best = char[Settings.AimPart]
+        end
+    end
+    return best
+end
+RunService.Heartbeat:Connect(function()
+    if not Settings.AimbotEnabled then return end
+    if not Settings.AimbotActive then return end
+    if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
+    local targetPart = GetClosestTarget()
+    if targetPart then
+        Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
+    end
+end)
+-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-- DRAGGABLE GUI + REOPEN BUTTON
+-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+local sg = Instance.new("ScreenGui")
+sg.Name = "UltimateCheatMenu"
+sg.ResetOnSpawn = false
+sg.Parent = LocalPlayer:WaitForChild("PlayerGui")
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 360, 0, 480)
+main.Position = UDim2.new(0.5, -180, 0.5, -240)
+main.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+main.BorderSizePixel = 0
+main.Visible = true
+main.Parent = sg
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1,0,0,45)
+title.BackgroundColor3 = Color3.fromRGB(0, 140, 255)
+title.Text = "ULTIMATE ESP + AIMBOT"
+title.TextColor3 = Color3.new(1,1,1)
+title.Font = Enum.Font.GothamBlack
+title.TextSize = 22
+title.Parent = main
+-- Draggable
+local dragging, dragInput, dragStart, startPos
+title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = main.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+title.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0,40,0,40)
+closeBtn.Position = UDim2.new(1,-45,0,5)
+closeBtn.BackgroundColor3 = Color3.fromRGB(220,40,40)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.new(1,1,1)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 20
+closeBtn.Parent = title
+closeBtn.MouseButton1Click:Connect(function()
+    main.Visible = false
+end)
+-- Reopen button
+local reopenBtn = Instance.new("TextButton")
+reopenBtn.Size = UDim2.new(0, 80, 0, 40)
+reopenBtn.Position = UDim2.new(1, -90, 1, -50)
+reopenBtn.BackgroundColor3 = Color3.fromRGB(0, 140, 255)
+reopenBtn.Text = "Menu"
+reopenBtn.TextColor3 = Color3.new(1,1,1)
+reopenBtn.Font = Enum.Font.GothamBold
+reopenBtn.TextSize = 18
+reopenBtn.BorderSizePixel = 0
+reopenBtn.Parent = sg
+reopenBtn.MouseButton1Click:Connect(function()
+    main.Visible = true
+end)
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1,-20,1,-60)
+content.Position = UDim2.new(0,10,0,55)
+content.BackgroundTransparency = 1
+content.Parent = main
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0,8)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Parent = content
+
+-- ────────────────────────────────────────────────
+-- ADDED CREDIT LABEL AT THE BOTTOM
+-- ────────────────────────────────────────────────
+local creditLabel = Instance.new("TextLabel")
+creditLabel.Size = UDim2.new(1, 0, 0, 20)
+creditLabel.Position = UDim2.new(0, 0, 1, -25)
+creditLabel.BackgroundTransparency = 1
+creditLabel.Text = "made by im_a_script_kiddie"
+creditLabel.TextColor3 = Color3.fromRGB(140, 140, 140)
+creditLabel.Font = Enum.Font.Gotham
+creditLabel.TextSize = 13
+creditLabel.TextXAlignment = Enum.TextXAlignment.Center
+creditLabel.Parent = main
+
+local function CreateToggle(name, initial, callback)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1,0,0,38)
+    frame.BackgroundColor3 = Color3.fromRGB(30,30,30)
+    frame.Parent = content
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.7,0,1,0)
+    label.BackgroundTransparency = 1
+    label.Text = name
+    label.TextColor3 = Color3.new(1,1,1)
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = 16
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = frame
+    local toggle = Instance.new("TextButton")
+    toggle.Size = UDim2.new(0,60,0,26)
+    toggle.Position = UDim2.new(1,-70,0.5,-13)
+    toggle.BackgroundColor3 = initial and Color3.fromRGB(0,180,80) or Color3.fromRGB(140,0,0)
+    toggle.Text = initial and "ON" or "OFF"
+    toggle.TextColor3 = Color3.new(1,1,1)
+    toggle.Font = Enum.Font.GothamBold
+    toggle.TextSize = 15
+    toggle.Parent = frame
+    local enabled = initial
+    toggle.MouseButton1Click:Connect(function()
+        enabled = not enabled
+        toggle.BackgroundColor3 = enabled and Color3.fromRGB(0,180,80) or Color3.fromRGB(140,0,0)
+        toggle.Text = enabled and "ON" or "OFF"
+        callback(enabled)
+    end)
+    return toggle
+end
+-- Toggles (updated names for clarity)
+CreateToggle("Box ESP", false, function(v) Settings.UseBoxESP = v end)
+CreateToggle("Highlight ESP", false, function(v) Settings.UseHighlightESP = v end)
+CreateToggle("Show Names / Info", false, function(v) Settings.ShowNames = v end)
+CreateToggle("Show Team ESP", false, function(v) Settings.ShowTeamESP = v end)
+CreateToggle("Aimbot Enabled", false, function(v) Settings.AimbotEnabled = v end)
+CreateToggle("Aimbot → Hold RMB", false, function(v) Settings.AimbotActive = v end)
+CreateToggle("Aimbot Target Teammates", false, function(v) Settings.TargetTeam = v end)
+CreateToggle("Aim at: Head", true, function()
+    Settings.AimPart = Settings.AimPart == "Head" and "HumanoidRootPart" or "Head"
+end)
+print("ESP + Aimbot loaded - FIXED (Box + Highlight work together)")
+print("Toggle Box ESP and/or Highlight ESP separately | Hold RMB to aim | 'X' to hide, 'Menu' to reopen")
